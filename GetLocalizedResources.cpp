@@ -59,6 +59,8 @@ static void Usage(const wchar_t* argv0, const wchar_t* szError = nullptr)
 		<< L"    " << sExe << L" -d wsecedit.dll -o .\\wsecedit-dlg.txt" << std::endl
 		<< L"    " << sExe << L" -s -o .\\wsecedit-strings.txt C:\\Windows\\System32\\fr-FR\\wsecedit.dll.mui" << std::endl
 		<< L"    " << sExe << L" -m msprivs.dll -l fr-FR -o .\\msprivs-French.txt" << std::endl
+		<< L"    " << sExe << L" -m ntdll.dll -o .\\AllTheNtstatusErrorMessages.txt" << std::endl
+		<< L"    " << sExe << L" -m kernel32.dll -o .\\LotsOfTheWin32ErrorMessages.txt" << std::endl
 		<< std::endl;
 	exit(-1);
 }
