@@ -10,6 +10,7 @@
 #include "StringTableExtraction.h"
 #include "MessageTableExtraction.h"
 #include "MenuTextExtraction.h"
+#include "IndirectStringExtraction.h"
 #include "SysErrorMessage.h"
 #include "UtilityFunctions.h"
 #include "LanguageChanger.h"
@@ -28,26 +29,35 @@ static void Usage(const wchar_t* argv0, const wchar_t* szError = nullptr)
 	std::wcerr
 		<< std::endl
 		<< sExe << L":" << std::endl
-		<< L"    Extracts localized text from the named file's string table, dialogs, message table, or menu resources," << std::endl
-		<< L"    as tab-delimited text with headers." << std::endl
+		<< L"    Extracts localized text from an indirect-string reference, or from a named file's string table," << std::endl
+		<< L"    dialogs, message table, or menu resources, as tab-delimited text with headers." << std::endl
 		<< std::endl
 		<< L"Usage:" << std::endl
 		<< std::endl
+		<< L"    " << sExe << L" [-l langspec] [-o outfile] indirectString" << std::endl
 		<< L"    " << sExe << L" {-s|-d|-m|-n} [-l langspec] [-o outfile] resourceFile" << std::endl
 		<< std::endl
-		<< L"Must pick one of -s, -d, -m, or -n:" << std::endl
-		<< L"  -s   : output contents of string table" << std::endl
-		<< L"  -d   : output text in dialog resources" << std::endl
-		<< L"  -m   : output contents of message table" << std::endl
-		<< L"  -n   : output text in menu resources" << std::endl
+		<< L"  -l langspec" << std::endl
+		<< L"       : use the specified language (if possible) instead of the default language." << std::endl
+		<< L"         Language specification must be in the \"name\" form, such as \"fr-FR\"." << std::endl
 		<< std::endl
 		<< L"  -o   : output to a named UTF-8 file. If -o not used, outputs to stdout." << std::endl
 		<< L"         (Recommended: much higher fidelity than Windows console redirection" << std::endl
 		<< L"         using \">\" or \"|\", especially with non-English languages.)" << std::endl
 		<< std::endl
-		<< L"  -l langspec" << std::endl
-		<< L"       : use the specified language (if possible) instead of the default language." << std::endl
-		<< L"         Language specification must be in the \"name\" form, such as \"fr-FR\"." << std::endl
+		<< L"  indirectString" << std::endl
+		<< L"       : text beginning with the @ symbol that specifies a string resource, such as" << std::endl
+		<< L"         @wsecedit.dll,-59167" << std::endl
+		<< L"         Note that @ and comma have special meaning in PowerShell, so the indirect string" << std::endl
+		<< L"         should be quoted." << std::endl
+		<< L"         Full documentation on the supported syntaxes for indirect strings here:" << std::endl
+		<< L"         https://learn.microsoft.com/en-us/windows/win32/api/shlwapi/nf-shlwapi-shloadindirectstring#remarks" << std::endl
+		<< std::endl
+		<< L"  If not referencing an indirect string, must pick one of -s, -d, -m, or -n:" << std::endl
+		<< L"  -s   : output contents of string table" << std::endl
+		<< L"  -d   : output text in dialog resources" << std::endl
+		<< L"  -m   : output contents of message table" << std::endl
+		<< L"  -n   : output text in menu resources" << std::endl
 		<< std::endl
 		<< L"  resourceFile" << std::endl
 		<< L"       : the resource PE file (e.g., EXE or DLL) from which to extract resources." << std::endl
@@ -56,6 +66,8 @@ static void Usage(const wchar_t* argv0, const wchar_t* szError = nullptr)
 		<< L"         If a system file, Windows will get the system's default localized resources." << std::endl
 		<< std::endl
 		<< L"Examples:" << std::endl
+		<< L"    " << sExe << L" \"@wsecedit.dll,-59167\"" << std::endl
+		<< L"    " << sExe << L" \"@wsecedit.dll,-59167\" -l fr-fr -o .\\59167-fr.txt" << std::endl
 		<< L"    " << sExe << L" -d wsecedit.dll -o .\\wsecedit-dlg.txt" << std::endl
 		<< L"    " << sExe << L" -s -o .\\wsecedit-strings.txt C:\\Windows\\System32\\fr-FR\\wsecedit.dll.mui" << std::endl
 		<< L"    " << sExe << L" -m msprivs.dll -l fr-FR -o .\\msprivs-French.txt" << std::endl
@@ -74,14 +86,15 @@ int wmain(int argc, wchar_t** argv)
 	}
 
 	bool bOut_toFile = false;
-	std::wstring sOutFile, sResourceFile, sLangSpec;
+	std::wstring sOutFile, sResource, sLangSpec;
 	enum class option_t
 	{
 		eNotSet,
 		eStringTable,
 		eDialog,
 		eMessageTable,
-		eMenu
+		eMenu,
+		eIndirectString
 	} option = option_t::eNotSet;
 
 	// Optional redirection for stdout and stderr.
@@ -100,7 +113,7 @@ int wmain(int argc, wchar_t** argv)
 	int ixArg = 1;
 	while (ixArg < argc)
 	{
-		//TODO: make sure that user doesn't try to set more than one of the options -s -d -m -n
+		//TODO: make sure that user doesn't try to set more than one of the options -s -d -m -n or with indirect string
 		if (0 == wcscmp(L"-s", argv[ixArg]))
 			option = option_t::eStringTable;
 		else if (0 == wcscmp(L"-d", argv[ixArg]))
@@ -131,16 +144,24 @@ int wmain(int argc, wchar_t** argv)
 		else
 		{
 			// Already set file name
-			if (sResourceFile.length() > 0)
+			if (sResource.length() > 0)
 				Usage(argv[0]);
-			sResourceFile = argv[ixArg];
+			sResource = argv[ixArg];
+			if (L'@' == sResource[0])
+			{
+				if (option_t::eNotSet != option)
+				{
+					Usage(argv[0], L"Don't use -s -m -n or -o switches with indirect string");
+				}
+				option = option_t::eIndirectString;
+			}
 		}
 		++ixArg;
 	}
 	// Validate command line
 	if (option_t::eNotSet == option)
 		Usage(argv[0], L"Option not specified.");
-	if (0 == sResourceFile.length())
+	if (0 == sResource.length())
 		Usage(argv[0], L"Resource file not specified.");
 
 	// If language specified, switch to it
@@ -154,20 +175,25 @@ int wmain(int argc, wchar_t** argv)
 		}
 	}
 
-	// Load the resource file. 
-	// Temporarily disable WOW64 file system redirection so if this is a 32-bit process it can still
-	// access resources in the System32 directory on 64-bit Windows.
 	Wow64FsRedirection fsRedir;
-	fsRedir.Disable();
-	HMODULE hModule = LoadLibraryExW(sResourceFile.c_str(), NULL, LOAD_LIBRARY_AS_DATAFILE);
-	DWORD dwLastErr = GetLastError();
-	fsRedir.Revert();
-	if (!hModule)
+	HMODULE hModule = NULL;
+
+	if (option_t::eIndirectString != option)
 	{
-		std::wcerr 
-			<< L"Cannot load resource file " << sResourceFile << std::endl
-			<< SysErrorMessageWithCode(dwLastErr) << std::endl;
-		Usage(argv[0]);
+		// Load the resource file. 
+		// Temporarily disable WOW64 file system redirection so if this is a 32-bit process it can still
+		// access resources in the System32 directory on 64-bit Windows.
+		fsRedir.Disable();
+		hModule = LoadLibraryExW(sResource.c_str(), NULL, LOAD_LIBRARY_AS_DATAFILE);
+		DWORD dwLastErr = GetLastError();
+		fsRedir.Revert();
+		if (!hModule)
+		{
+			std::wcerr
+				<< L"Cannot load resource file " << sResource << std::endl
+				<< SysErrorMessageWithCode(dwLastErr) << std::endl;
+			Usage(argv[0]);
+		}
 	}
 
 	// Set up output file if specified.
@@ -186,7 +212,8 @@ int wmain(int argc, wchar_t** argv)
 		else
 		{
 			std::wcerr << L"Error: Couldn't open output file " << sOutFile << std::endl;
-			FreeLibrary(hModule);
+			if (NULL != hModule)
+				FreeLibrary(hModule);
 			Usage(argv[0]);
 		}
 	}
@@ -209,16 +236,16 @@ int wmain(int argc, wchar_t** argv)
 	case option_t::eMenu:
 		MenuTextExtraction(hModule, streams);
 		break;
+	case option_t::eIndirectString:
+		IndirectStringExtraction(sResource, streams);
+		break;
 	default:
 		streams.WCerr << L"This option doesn't exist - WTAF? " << (int)option << std::endl;
 		break;
 	}
 
-// Eliminate false positive about hModule possibly being 0
-#pragma warning(push)
-#pragma warning (disable: 6387)
-	FreeLibrary(hModule);
-#pragma warning(pop)
+	if (NULL != hModule)
+		FreeLibrary(hModule);
 
 	if (bCloseFOut)
 		fOut.close();

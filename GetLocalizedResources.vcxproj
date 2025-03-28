@@ -142,6 +142,7 @@
     <ClCompile Include="DialogTextExtraction.cpp" />
     <ClCompile Include="FileOutput.cpp" />
     <ClCompile Include="GetLocalizedResources.cpp" />
+    <ClCompile Include="IndirectStringExtraction.cpp" />
     <ClCompile Include="MenuTextExtraction.cpp" />
     <ClCompile Include="MessageTableExtraction.cpp" />
     <ClCompile Include="ResourceDefs.cpp" />
@@ -153,6 +154,7 @@
     <ClInclude Include="DialogTextExtraction.h" />
     <ClInclude Include="FileOutput.h" />
     <ClInclude Include="HEX.h" />
+    <ClInclude Include="IndirectStringExtraction.h" />
     <ClInclude Include="LanguageChanger.h" />
     <ClInclude Include="MenuTextExtraction.h" />
     <ClInclude Include="MessageTableExtraction.h" />
